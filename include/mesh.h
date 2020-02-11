@@ -14,6 +14,10 @@
 #ifdef USE_MPI
 #include "mpi.h"
 #endif
+
+// OpenMP
+#include "omp.h"
+
 // TBB
 #include <tbb/parallel_for.h>
 #include <tbb/parallel_for_each.h>

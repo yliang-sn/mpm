@@ -69,27 +69,18 @@ bool mpm::Mesh<Tdim>::remove_node(
 template <unsigned Tdim>
 template <typename Toper>
 void mpm::Mesh<Tdim>::iterate_over_nodes(Toper oper) {
-  tbb::parallel_for(
-      tbb::blocked_range<int>(size_t(0), size_t(nodes_.size()),
-                              tbb_grain_size_),
-      [&](const tbb::blocked_range<int>& range) {
-        for (int i = range.begin(); i != range.end(); ++i) oper(nodes_[i]);
-      },
-      tbb::simple_partitioner());
+#pragma omp parallel for schedule(dynamic)
+  for (int i = 0; i < nodes_.size(); ++i) oper(nodes_[i]);
 }
 
 //! Iterate over nodes
 template <unsigned Tdim>
 template <typename Toper, typename Tpred>
 void mpm::Mesh<Tdim>::iterate_over_nodes_predicate(Toper oper, Tpred pred) {
-  tbb::parallel_for(
-      tbb::blocked_range<int>(size_t(0), size_t(nodes_.size()),
-                              tbb_grain_size_),
-      [&](const tbb::blocked_range<int>& range) {
-        for (int i = range.begin(); i != range.end(); ++i)
-          if (pred(nodes_[i])) oper(nodes_[i]);
-      },
-      tbb::simple_partitioner());
+#pragma omp parallel for schedule(dynamic)
+  for (int i = 0; i < nodes_.size(); ++i) {
+    if (pred(nodes_[i])) oper(nodes_[i]);
+  }
 }
 
 //! Create a list of active nodes in mesh
@@ -106,14 +97,8 @@ void mpm::Mesh<Tdim>::find_active_nodes() {
 template <unsigned Tdim>
 template <typename Toper>
 void mpm::Mesh<Tdim>::iterate_over_active_nodes(Toper oper) {
-  tbb::parallel_for(
-      tbb::blocked_range<int>(size_t(0), size_t(active_nodes_.size()),
-                              tbb_grain_size_),
-      [&](const tbb::blocked_range<int>& range) {
-        for (int i = range.begin(); i != range.end(); ++i)
-          oper(active_nodes_[i]);
-      },
-      tbb::simple_partitioner());
+#pragma omp parallel for schedule(dynamic)
+  for (int i = 0; i < active_nodes_.size(); ++i) oper(active_nodes_[i]);
 }
 
 #ifdef USE_MPI
@@ -278,13 +263,8 @@ bool mpm::Mesh<Tdim>::remove_cell(
 template <unsigned Tdim>
 template <typename Toper>
 void mpm::Mesh<Tdim>::iterate_over_cells(Toper oper) {
-  tbb::parallel_for(
-      tbb::blocked_range<int>(size_t(0), size_t(cells_.size()),
-                              tbb_grain_size_),
-      [&](const tbb::blocked_range<int>& range) {
-        for (int i = range.begin(); i != range.end(); ++i) oper(cells_[i]);
-      },
-      tbb::simple_partitioner());
+#pragma omp parallel for schedule(dynamic)
+  for (int i = 0; i < cells_.size(); ++i) oper(cells_[i]);
 }
 
 //! Create cells from node lists
@@ -785,13 +765,8 @@ bool mpm::Mesh<Tdim>::locate_particle_cells(
 template <unsigned Tdim>
 template <typename Toper>
 void mpm::Mesh<Tdim>::iterate_over_particles(Toper oper) {
-  tbb::parallel_for(
-      tbb::blocked_range<int>(size_t(0), size_t(particles_.size()),
-                              tbb_grain_size_),
-      [&](const tbb::blocked_range<int>& range) {
-        for (int i = range.begin(); i != range.end(); ++i) oper(particles_[i]);
-      },
-      tbb::simple_partitioner());
+#pragma omp parallel for schedule(dynamic)
+  for (int i = 0; i < particles_.size(); ++i) oper(particles_[i]);
 }
 
 //! Iterate over particle set
