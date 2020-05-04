@@ -8,18 +8,18 @@
 #include "catch.hpp"
 
 #include "cell.h"
-#include "container.h"
 #include "data_types.h"
 #include "element.h"
 #include "graph.h"
 #include "hdf5_particle.h"
 #include "hexahedron_element.h"
-#include "material/material.h"
+#include "material.h"
 #include "mesh.h"
 #include "mpi_datatypes.h"
 #include "node.h"
 #include "particle.h"
 #include "quadrilateral_element.h"
+#include "vector.h"
 
 // MPI
 #ifdef USE_MPI
@@ -184,33 +184,38 @@ TEST_CASE("Graph is checked for 2D case", "[graph][2D]") {
   cell14->add_neighbour(id13);
 
   // adding neighour complete
-  // Cell container
-  auto cellcontainer = std::make_shared<mpm::Container<mpm::Cell<Dim>>>();
+  // Cell vector
+  auto cellvector = std::make_shared<mpm::Vector<mpm::Cell<Dim>>>();
 
-  // add cells into container
-  cellcontainer->add(cell0);
-  cellcontainer->add(cell1);
-  cellcontainer->add(cell2);
-  cellcontainer->add(cell3);
-  cellcontainer->add(cell4);
-  cellcontainer->add(cell5);
-  cellcontainer->add(cell6);
-  cellcontainer->add(cell7);
-  cellcontainer->add(cell8);
-  cellcontainer->add(cell9);
-  cellcontainer->add(cell10);
-  cellcontainer->add(cell11);
-  cellcontainer->add(cell12);
-  cellcontainer->add(cell13);
-  cellcontainer->add(cell14);
+  // add cells into vector
+  cellvector->add(cell0);
+  cellvector->add(cell1);
+  cellvector->add(cell2);
+  cellvector->add(cell3);
+  cellvector->add(cell4);
+  cellvector->add(cell5);
+  cellvector->add(cell6);
+  cellvector->add(cell7);
+  cellvector->add(cell8);
+  cellvector->add(cell9);
+  cellvector->add(cell10);
+  cellvector->add(cell11);
+  cellvector->add(cell12);
+  cellvector->add(cell13);
+  cellvector->add(cell14);
 
   // simluate number of tasks
   int num_threads = 3;
 
   // initialize graph
-  mpm::Graph<Dim> graph1 = mpm::Graph<Dim>(*cellcontainer, num_threads, 0);
-  mpm::Graph<Dim> graph2 = mpm::Graph<Dim>(*cellcontainer, num_threads, 1);
-  mpm::Graph<Dim> graph3 = mpm::Graph<Dim>(*cellcontainer, num_threads, 2);
+  mpm::Graph<Dim> graph1 = mpm::Graph<Dim>(*cellvector);
+  mpm::Graph<Dim> graph2 = mpm::Graph<Dim>(*cellvector);
+  mpm::Graph<Dim> graph3 = mpm::Graph<Dim>(*cellvector);
+
+  // Construct graphs
+  graph1.construct_graph(num_threads, 0);
+  graph2.construct_graph(num_threads, 1);
+  graph3.construct_graph(num_threads, 2);
 
   // Check graph structure
   SECTION("Check graph initialize function") {
@@ -480,25 +485,53 @@ TEST_CASE("Graph Partitioning in 2D", "[mpi][graph][2D]") {
     REQUIRE(mesh->add_cell(cell3) == true);
 
     // Compute cell neighbours
-    mesh->compute_cell_neighbours();
+    mesh->find_cell_neighbours();
+
+    coords << 1, 1;
+    std::shared_ptr<mpm::ParticleBase<Dim>> particle0 =
+        std::make_shared<mpm::Particle<Dim>>(0, coords);
+
+    coords << 1, 3;
+    std::shared_ptr<mpm::ParticleBase<Dim>> particle1 =
+        std::make_shared<mpm::Particle<Dim>>(1, coords);
+
+    coords << 3, 1;
+    std::shared_ptr<mpm::ParticleBase<Dim>> particle2 =
+        std::make_shared<mpm::Particle<Dim>>(2, coords);
+
+    coords << 3, 3;
+    std::shared_ptr<mpm::ParticleBase<Dim>> particle3 =
+        std::make_shared<mpm::Particle<Dim>>(3, coords);
+
+    mesh->add_particle(particle0);
+    mesh->add_particle(particle1);
+    mesh->add_particle(particle2);
+    mesh->add_particle(particle3);
+
+    auto missing = mesh->locate_particles_mesh();
+    REQUIRE(missing.size() == 0);
+
+    REQUIRE(mesh->nparticles() == 4);
 
     SECTION("Decompose mesh graph") {
-      if (mpi_rank == 4) {
-        // Create graph
-        auto graph = std::make_shared<mpm::Graph<Dim>>(mesh->cells(), mpi_size,
-                                                       mpi_rank);
+      if (mpi_size == 4) {
         // Initialize MPI
         MPI_Comm comm;
-        MPI_Comm_dup(MPI_COMM_WORLD, &comm);
+        int val = MPI_Comm_dup(MPI_COMM_WORLD, &comm);
 
-        // Check number of ghost cells
-        REQUIRE(mesh->nghost_cells() == 0);
-        REQUIRE(mesh->nlocal_ghost_cells() == 0);
+        auto graph = std::make_shared<mpm::Graph<Dim>>(mesh->cells());
 
-        // Fast mode for graph partitioning
-        int mode = 4;
-        // Create partition
-        bool graphpartition = graph->create_partitions(&comm, mode);
+        // Find number of particles in each cell across MPI ranks
+        mesh->find_nglobal_particles_cells();
+
+        // Construct a weighted DAG
+        graph->construct_graph(mpi_size, mpi_rank);
+
+        // Graph partitioning mode
+        int mode = 4;  // FAST
+        // Create graph partition
+        graph->create_partitions(&comm, mode);
+        // REQUIRE(graph_partition == true);
 
         // Collect the partitions
         graph->collect_partitions(mpi_size, mpi_rank, &comm);
@@ -508,11 +541,23 @@ TEST_CASE("Graph Partitioning in 2D", "[mpi][graph][2D]") {
 
         // Identify shared nodes across MPI domains
         mesh->find_domain_shared_nodes();
-
         // Identify ghost boundary cells
         mesh->find_ghost_boundary_cells();
-        REQUIRE(mesh->nghost_cells() == 3);
-        REQUIRE(mesh->nlocal_ghost_cells() == 1);
+
+        std::vector<int> ranks;
+        ranks.emplace_back(cell0->rank());
+        ranks.emplace_back(cell1->rank());
+        ranks.emplace_back(cell2->rank());
+        ranks.emplace_back(cell3->rank());
+
+        for (unsigned i = 0; i < mpi_size; ++i) {
+          if (mpi_rank == i) {
+            int nlocal = std::count(ranks.begin(), ranks.end(), mpi_rank);
+            int nghost = (nlocal != 0) ? ranks.size() - nlocal : 0;
+            REQUIRE(mesh->nghost_cells() == nghost);
+            REQUIRE(mesh->nlocal_ghost_cells() == nlocal);
+          }
+        }
       }
     }
   }
@@ -733,25 +778,53 @@ TEST_CASE("Graph Partitioning in 3D", "[mpi][graph][3D]") {
     REQUIRE(mesh->add_cell(cell3) == true);
 
     // Compute cell neighbours
-    mesh->compute_cell_neighbours();
+    mesh->find_cell_neighbours();
+
+    coords << 1, 1, 1;
+    std::shared_ptr<mpm::ParticleBase<Dim>> particle0 =
+        std::make_shared<mpm::Particle<Dim>>(0, coords);
+
+    coords << 1, 1, 3;
+    std::shared_ptr<mpm::ParticleBase<Dim>> particle1 =
+        std::make_shared<mpm::Particle<Dim>>(1, coords);
+
+    coords << 3, 1, 3;
+    std::shared_ptr<mpm::ParticleBase<Dim>> particle2 =
+        std::make_shared<mpm::Particle<Dim>>(2, coords);
+
+    coords << 3, 1, 1;
+    std::shared_ptr<mpm::ParticleBase<Dim>> particle3 =
+        std::make_shared<mpm::Particle<Dim>>(3, coords);
+
+    mesh->add_particle(particle0);
+    mesh->add_particle(particle1);
+    mesh->add_particle(particle2);
+    mesh->add_particle(particle3);
+
+    auto missing = mesh->locate_particles_mesh();
+    REQUIRE(missing.size() == 0);
+
+    REQUIRE(mesh->nparticles() == 4);
 
     SECTION("Decompose mesh graph") {
-      if (mpi_rank == 4) {
-        // Create graph
-        auto graph = std::make_shared<mpm::Graph<Dim>>(mesh->cells(), mpi_size,
-                                                       mpi_rank);
+      if (mpi_size == 4) {
         // Initialize MPI
         MPI_Comm comm;
-        MPI_Comm_dup(MPI_COMM_WORLD, &comm);
+        int val = MPI_Comm_dup(MPI_COMM_WORLD, &comm);
 
-        // Check number of ghost cells
-        REQUIRE(mesh->nghost_cells() == 0);
-        REQUIRE(mesh->nlocal_ghost_cells() == 0);
+        auto graph = std::make_shared<mpm::Graph<Dim>>(mesh->cells());
 
-        // Fast mode for graph partitioning
-        int mode = 4;
-        // Create partition
-        bool graphpartition = graph->create_partitions(&comm, mode);
+        // Find number of particles in each cell across MPI ranks
+        mesh->find_nglobal_particles_cells();
+
+        // Construct a weighted DAG
+        graph->construct_graph(mpi_size, mpi_rank);
+
+        // Graph partitioning mode
+        int mode = 4;  // FAST
+        // Create graph partition
+        graph->create_partitions(&comm, mode);
+        // REQUIRE(graph_partition == true);
 
         // Collect the partitions
         graph->collect_partitions(mpi_size, mpi_rank, &comm);
@@ -761,12 +834,23 @@ TEST_CASE("Graph Partitioning in 3D", "[mpi][graph][3D]") {
 
         // Identify shared nodes across MPI domains
         mesh->find_domain_shared_nodes();
-
         // Identify ghost boundary cells
         mesh->find_ghost_boundary_cells();
 
-        REQUIRE(mesh->nghost_cells() == 3);
-        REQUIRE(mesh->nlocal_ghost_cells() == 1);
+        std::vector<int> ranks;
+        ranks.emplace_back(cell0->rank());
+        ranks.emplace_back(cell1->rank());
+        ranks.emplace_back(cell2->rank());
+        ranks.emplace_back(cell3->rank());
+
+        for (unsigned i = 0; i < mpi_size; ++i) {
+          if (mpi_rank == i) {
+            int nlocal = std::count(ranks.begin(), ranks.end(), mpi_rank);
+            int nghost = (nlocal != 0) ? ranks.size() - nlocal : 0;
+            REQUIRE(mesh->nghost_cells() == nghost);
+            REQUIRE(mesh->nlocal_ghost_cells() == nlocal);
+          }
+        }
       }
     }
   }

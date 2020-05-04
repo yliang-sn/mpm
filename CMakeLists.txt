@@ -124,10 +124,9 @@ endif()
 # VTK
 find_package(VTK)
 if (VTK_FOUND)
+  add_definitions("-DUSE_VTK")
   include_directories(${VTK_INCLUDE_DIRS})
   link_libraries(${VTK_LIBRARIES})
-  add_definitions("-DUSE_VTK")
-  set(mpm_vtk ${mpm_SOURCE_DIR}/src/io/vtk_writer.cc)
 endif()
 
 # Partio
@@ -141,6 +140,7 @@ endif()
 # Include directories
 include_directories(BEFORE
   ${mpm_SOURCE_DIR}/include/
+  ${mpm_SOURCE_DIR}/include/containers/
   ${mpm_SOURCE_DIR}/include/elements/
   ${mpm_SOURCE_DIR}/include/elements/2d
   ${mpm_SOURCE_DIR}/include/elements/3d
@@ -148,7 +148,8 @@ include_directories(BEFORE
   ${mpm_SOURCE_DIR}/include/generators/
   ${mpm_SOURCE_DIR}/include/io/
   ${mpm_SOURCE_DIR}/include/loads_bcs/
-  ${mpm_SOURCE_DIR}/include/material/
+  ${mpm_SOURCE_DIR}/include/materials/
+  ${mpm_SOURCE_DIR}/include/particles/
   ${mpm_SOURCE_DIR}/include/solvers/
   ${mpm_SOURCE_DIR}/external/
   ${mpm_SOURCE_DIR}/tests/include/
@@ -163,13 +164,15 @@ SET(mpm_src
   ${mpm_SOURCE_DIR}/src/functions/linear_function.cc
   ${mpm_SOURCE_DIR}/src/functions/sin_function.cc
   ${mpm_SOURCE_DIR}/src/geometry.cc
-  ${mpm_SOURCE_DIR}/src/hdf5_particle.cc  
+  ${mpm_SOURCE_DIR}/src/hdf5_particle.cc
   ${mpm_SOURCE_DIR}/src/io/io.cc
   ${mpm_SOURCE_DIR}/src/io/io_mesh.cc
   ${mpm_SOURCE_DIR}/src/io/logger.cc
   ${mpm_SOURCE_DIR}/src/io/partio_writer.cc
+  ${mpm_SOURCE_DIR}/src/io/vtk_writer.cc
   ${mpm_SOURCE_DIR}/src/material.cc
   ${mpm_SOURCE_DIR}/src/mpm.cc
+  ${mpm_SOURCE_DIR}/src/nodal_properties.cc
   ${mpm_SOURCE_DIR}/src/node.cc
   ${mpm_SOURCE_DIR}/src/particle.cc
   ${mpm_SOURCE_DIR}/src/quadrature.cc
@@ -187,8 +190,8 @@ endif()
 if(MPM_BUILD_TESTING)
   SET(test_src
     ${mpm_SOURCE_DIR}/tests/test_main.cc
-    ${mpm_SOURCE_DIR}/tests/cell_container_test.cc
     ${mpm_SOURCE_DIR}/tests/cell_test.cc
+    ${mpm_SOURCE_DIR}/tests/cell_vector_test.cc
     ${mpm_SOURCE_DIR}/tests/factory_test.cc
     ${mpm_SOURCE_DIR}/tests/geometry_test.cc
     ${mpm_SOURCE_DIR}/tests/elements/hexahedron_element_test.cc
@@ -202,17 +205,20 @@ if(MPM_BUILD_TESTING)
     ${mpm_SOURCE_DIR}/tests/functions/linear_function_test.cc
     ${mpm_SOURCE_DIR}/tests/functions/sin_function_test.cc
     ${mpm_SOURCE_DIR}/tests/graph_test.cc
+    ${mpm_SOURCE_DIR}/tests/interface_test.cc
     ${mpm_SOURCE_DIR}/tests/io/io_mesh_ascii_test.cc
     ${mpm_SOURCE_DIR}/tests/io/io_test.cc
     ${mpm_SOURCE_DIR}/tests/io/vtk_writer_test.cc
     ${mpm_SOURCE_DIR}/tests/io/write_mesh_particles.cc
     ${mpm_SOURCE_DIR}/tests/io/write_mesh_particles_unitcell.cc
-    ${mpm_SOURCE_DIR}/tests/material/bingham_test.cc
-    ${mpm_SOURCE_DIR}/tests/material/linear_elastic_test.cc
-    ${mpm_SOURCE_DIR}/tests/material/mohr_coulomb_test.cc
-    ${mpm_SOURCE_DIR}/tests/material/newtonian_test.cc
-    ${mpm_SOURCE_DIR}/tests/material/norsand_test.cc
-    ${mpm_SOURCE_DIR}/tests/mesh_cell_neighbours_test.cc
+    ${mpm_SOURCE_DIR}/tests/materials/bingham_test.cc
+    ${mpm_SOURCE_DIR}/tests/materials/linear_elastic_test.cc
+    ${mpm_SOURCE_DIR}/tests/materials/modified_cam_clay_test.cc
+    ${mpm_SOURCE_DIR}/tests/materials/mohr_coulomb_test.cc
+    ${mpm_SOURCE_DIR}/tests/materials/newtonian_test.cc
+    ${mpm_SOURCE_DIR}/tests/materials/norsand_test.cc
+    ${mpm_SOURCE_DIR}/tests/materials/material_utility_test.cc
+    ${mpm_SOURCE_DIR}/tests/mesh_neighbours_test.cc
     ${mpm_SOURCE_DIR}/tests/mesh_test.cc
     ${mpm_SOURCE_DIR}/tests/mpi_particle_test.cc
     ${mpm_SOURCE_DIR}/tests/mpi_transfer_particle_test.cc
@@ -220,13 +226,14 @@ if(MPM_BUILD_TESTING)
     ${mpm_SOURCE_DIR}/tests/mpm_explicit_usf_unitcell_test.cc
     ${mpm_SOURCE_DIR}/tests/mpm_explicit_usl_test.cc
     ${mpm_SOURCE_DIR}/tests/mpm_explicit_usl_unitcell_test.cc
-    ${mpm_SOURCE_DIR}/tests/node_container_test.cc
+    ${mpm_SOURCE_DIR}/tests/nodal_properties_test.cc
     ${mpm_SOURCE_DIR}/tests/node_map_test.cc
     ${mpm_SOURCE_DIR}/tests/node_test.cc
+    ${mpm_SOURCE_DIR}/tests/node_vector_test.cc
     ${mpm_SOURCE_DIR}/tests/particle_cell_crossing_test.cc
-    ${mpm_SOURCE_DIR}/tests/particle_container_test.cc
     ${mpm_SOURCE_DIR}/tests/particle_test.cc
     ${mpm_SOURCE_DIR}/tests/particle_traction_test.cc
+    ${mpm_SOURCE_DIR}/tests/particle_vector_test.cc
     ${mpm_SOURCE_DIR}/tests/point_in_cell_test.cc
   )
   if(MPM_BUILD_LIB)
@@ -235,7 +242,7 @@ if(MPM_BUILD_TESTING)
     add_test(NAME mpmtest COMMAND $<TARGET_FILE:mpmtest>)
     enable_testing()
   else()
-    add_executable(mpmtest ${test_src} ${mpm_src} ${mpm_vtk})
+    add_executable(mpmtest ${mpm_src} ${test_src})
     add_test(NAME mpmtest COMMAND $<TARGET_FILE:mpmtest>)
     enable_testing()
   endif()
@@ -244,6 +251,6 @@ endif()
 # Coverage
 find_package(codecov)
 if(ENABLE_COVERAGE)
-  add_executable(mpmtest_coverage ${mpm_vtk} ${mpm_src} ${test_src})
+  add_executable(mpmtest_coverage ${mpm_src} ${test_src})
   add_coverage(mpmtest_coverage)
 endif()

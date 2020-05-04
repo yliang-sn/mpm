@@ -119,7 +119,7 @@ TEST_CASE("Particle is checked for 1D case", "[particle][1D]") {
     for (unsigned i = 0; i < pstress.size(); ++i)
       REQUIRE(pstress[i] == Approx(stress[i]).epsilon(Tolerance));
 
-    auto pstress_data = particle->vector_data("stresses");
+    auto pstress_data = particle->tensor_data("stresses");
     for (unsigned i = 0; i < pstress_data.size(); ++i)
       REQUIRE(pstress_data[i] == Approx(stress[i]).epsilon(Tolerance));
   }
@@ -1128,7 +1128,6 @@ TEST_CASE("Particle is checked for 2D case", "[particle][2D]") {
                 Approx(jmaterial["dilation"]).epsilon(Tolerance));
         REQUIRE(state_variables.at("cohesion") ==
                 Approx(jmaterial["cohesion"]).epsilon(Tolerance));
-        REQUIRE(state_variables.at("j3") == Approx(0.).epsilon(Tolerance));
         REQUIRE(state_variables.at("epsilon") == Approx(0.).epsilon(Tolerance));
         REQUIRE(state_variables.at("rho") == Approx(0.).epsilon(Tolerance));
         REQUIRE(state_variables.at("theta") == Approx(0.).epsilon(Tolerance));
@@ -2381,7 +2380,6 @@ TEST_CASE("Particle is checked for 3D case", "[particle][3D]") {
                 Approx(jmaterial["dilation"]).epsilon(Tolerance));
         REQUIRE(state_variables.at("cohesion") ==
                 Approx(jmaterial["cohesion"]).epsilon(Tolerance));
-        REQUIRE(state_variables.at("j3") == Approx(0.).epsilon(Tolerance));
         REQUIRE(state_variables.at("epsilon") == Approx(0.).epsilon(Tolerance));
         REQUIRE(state_variables.at("rho") == Approx(0.).epsilon(Tolerance));
         REQUIRE(state_variables.at("theta") == Approx(0.).epsilon(Tolerance));

@@ -289,7 +289,7 @@ void mpm::Mesh<Tdim>::iterate_over_cells(Toper oper) {
 
 //! Create cells from node lists
 template <unsigned Tdim>
-void mpm::Mesh<Tdim>::compute_cell_neighbours() {
+void mpm::Mesh<Tdim>::find_cell_neighbours() {
   // Initialize and compute node cell map
   tsl::robin_map<mpm::Index, std::set<mpm::Index>> node_cell_map;
   for (auto citr = cells_.cbegin(); citr != cells_.cend(); ++citr) {
@@ -315,6 +315,94 @@ void mpm::Mesh<Tdim>::compute_cell_neighbours() {
         }
       },
       tbb::simple_partitioner());
+}
+
+//! Find global number of particles across MPI ranks / cell
+template <unsigned Tdim>
+void mpm::Mesh<Tdim>::find_nglobal_particles_cells() {
+  int mpi_rank = 0;
+#ifdef USE_MPI
+  MPI_Comm_rank(MPI_COMM_WORLD, &mpi_rank);
+  for (auto citr = cells_.cbegin(); citr != cells_.cend(); ++citr) {
+    int nparticles;
+    // Determine the rank of the broadcast emitter process
+    if ((*citr)->rank() == mpi_rank) nparticles = (*citr)->nparticles();
+    MPI_Bcast(&nparticles, 1, MPI_INT, (*citr)->rank(), MPI_COMM_WORLD);
+    // Receive broadcast and update on all ranks
+    (*citr)->nglobal_particles(nparticles);
+  }
+#endif
+}
+
+//! Find particle neighbours for all particle
+template <unsigned Tdim>
+void mpm::Mesh<Tdim>::find_particle_neighbours() {
+  for (auto citr = cells_.cbegin(); citr != cells_.cend(); ++citr)
+    this->find_particle_neighbours(*citr);
+}
+
+//! Find particle neighbours for specific cell particle
+template <unsigned Tdim>
+void mpm::Mesh<Tdim>::find_particle_neighbours(
+    const std::shared_ptr<mpm::Cell<Tdim>>& cell) {
+  int mpi_rank = 0;
+#ifdef USE_MPI
+  MPI_Comm_rank(MPI_COMM_WORLD, &mpi_rank);
+#endif
+
+  // Particles in current cell
+  std::vector<mpm::Index> neighbour_particles = cell->particles();
+  // Loop over all neighboring cells, and append particle ids from each cell
+  for (const auto& neighbour_cell_id : cell->neighbours()) {
+    // Get the MPI rank of the neighbour cell
+    int neighbour_cell_rank = map_cells_[neighbour_cell_id]->rank();
+    if (neighbour_cell_rank != cell->rank()) {
+#ifdef USE_MPI
+      // Send particle ids
+      if (neighbour_cell_rank == mpi_rank) {
+        // Get particle ids from each cell
+        auto send_particle_ids = map_cells_[neighbour_cell_id]->particles();
+        // Get size of the particle ids
+        int pid_size = send_particle_ids.size();
+        // Send the size of the particles in cell
+        MPI_Send(&pid_size, 1, MPI_INT, cell->rank(), neighbour_cell_id,
+                 MPI_COMM_WORLD);
+
+        // Send particle ids if it is not empty
+        if (pid_size > 0)
+          MPI_Send(send_particle_ids.data(), pid_size, MPI_UNSIGNED_LONG_LONG,
+                   cell->rank(), neighbour_cell_id, MPI_COMM_WORLD);
+      }
+      // Receive particle ids in the current MPI rank
+      if (cell->rank() == mpi_rank) {
+        // Particle ids at local cell MPI rank
+        std::vector<mpm::Index> received_particle_ids;
+        int nparticles = 0;
+        MPI_Recv(&nparticles, 1, MPI_INT, neighbour_cell_rank,
+                 neighbour_cell_id, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+
+        if (nparticles > 0) {
+          received_particle_ids.resize(nparticles);
+          MPI_Recv(received_particle_ids.data(), nparticles,
+                   MPI_UNSIGNED_LONG_LONG, neighbour_cell_rank,
+                   neighbour_cell_id, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+        }
+
+        neighbour_particles.insert(neighbour_particles.end(),
+                                   received_particle_ids.begin(),
+                                   received_particle_ids.end());
+      }
+#endif
+    } else {
+      const auto& particle_ids = map_cells_[neighbour_cell_id]->particles();
+      neighbour_particles.insert(neighbour_particles.end(),
+                                 particle_ids.begin(), particle_ids.end());
+    }
+  }
+
+  // Assign neighbouring particle ids to particles in the current cell
+  for (auto particle_id : cell->particles())
+    map_particles_[particle_id]->assign_neighbours(neighbour_particles);
 }
 
 //! Find ghost cell neighbours
@@ -362,15 +450,60 @@ void mpm::Mesh<Tdim>::find_ghost_boundary_cells() {
 #endif
 }
 
+//! Find ncells in rank
+template <unsigned Tdim>
+mpm::Index mpm::Mesh<Tdim>::ncells_rank(bool active_cells) {
+  unsigned ncells_rank = 0;
+
+  int mpi_rank = 0;
+  int mpi_size = 1;
+#ifdef USE_MPI
+  // Get number of MPI ranks
+  MPI_Comm_rank(MPI_COMM_WORLD, &mpi_rank);
+#endif
+
+  if (active_cells) {
+    for (auto citr = cells_.cbegin(); citr != cells_.cend(); ++citr)
+      if ((*citr)->rank() == mpi_rank && (*citr)->nparticles() > 0)
+        ncells_rank += 1;
+  } else {
+    for (auto citr = cells_.cbegin(); citr != cells_.cend(); ++citr)
+      if ((*citr)->rank() == mpi_rank) ncells_rank += 1;
+  }
+  return ncells_rank;
+}
+
+//! Find nnodes in rank
+template <unsigned Tdim>
+mpm::Index mpm::Mesh<Tdim>::nnodes_rank() {
+  unsigned nnodes_rank = 0;
+
+  int mpi_rank = 0;
+#ifdef USE_MPI
+  // Get number of MPI ranks
+  MPI_Comm_rank(MPI_COMM_WORLD, &mpi_rank);
+#endif
+  for (auto nitr = nodes_.cbegin(); nitr != nodes_.cend(); ++nitr) {
+    // Get MPI ranks for the node
+    auto mpi_ranks = (*nitr)->mpi_ranks();
+    // Check if the local rank is in the list of ranks for the node
+    const bool local_node = mpi_ranks.find(mpi_rank) != mpi_ranks.end();
+    if (local_node) nnodes_rank += 1;
+  }
+  return nnodes_rank;
+}
+
 //! Create cells from node lists
 template <unsigned Tdim>
 bool mpm::Mesh<Tdim>::generate_material_points(unsigned nquadratures,
                                                const std::string& particle_type,
                                                unsigned material_id,
-                                               int cset_id) {
+                                               int cset_id, unsigned pset_id) {
   bool status = true;
   try {
     if (cells_.size() > 0) {
+      // Particle ids
+      tbb::concurrent_vector<mpm::Index> pids;
       unsigned before_generation = this->nparticles();
       bool checks = false;
       // Get material
@@ -399,12 +532,22 @@ bool mpm::Mesh<Tdim>::generate_material_points(unsigned nquadratures,
           if (status) {
             map_particles_[pid]->assign_cell(*citr);
             map_particles_[pid]->assign_material(material);
+            pids.emplace_back(pid);
           } else
             throw std::runtime_error("Generate particles in mesh failed");
         }
       }
       if (before_generation == this->nparticles())
         throw std::runtime_error("No particles were generated!");
+
+      // Add particles to set
+      status =
+          this->particle_sets_
+              .insert(std::pair<mpm::Index, tbb::concurrent_vector<mpm::Index>>(
+                  pset_id, pids))
+              .second;
+      if (!status) throw std::runtime_error("Particle set creation failed");
+
       console_->info(
           "Generate points:\n# of cells: {}\nExpected # of points: {}\n"
           "# of points generated: {}",
@@ -423,9 +566,11 @@ bool mpm::Mesh<Tdim>::generate_material_points(unsigned nquadratures,
 template <unsigned Tdim>
 bool mpm::Mesh<Tdim>::create_particles(
     const std::string& particle_type, const std::vector<VectorDim>& coordinates,
-    unsigned material_id, bool check_duplicates) {
+    unsigned material_id, unsigned pset_id, bool check_duplicates) {
   bool status = true;
   try {
+    // Particle ids
+    tbb::concurrent_vector<mpm::Index> pids;
     // Get material
     auto material = materials_.at(material_id);
     // Check if particle coordinates is empty
@@ -445,11 +590,19 @@ bool mpm::Mesh<Tdim>::create_particles(
       bool insert_status = this->add_particle(particle, check_duplicates);
 
       // If insertion is successful
-      if (insert_status)
+      if (insert_status) {
         map_particles_[pid]->assign_material(material);
-      else
+        pids.emplace_back(pid);
+      } else
         throw std::runtime_error("Addition of particle to mesh failed!");
     }
+    // Add particles to set
+    status =
+        this->particle_sets_
+            .insert(std::pair<mpm::Index, tbb::concurrent_vector<mpm::Index>>(
+                pset_id, pids))
+            .second;
+    if (!status) throw std::runtime_error("Particle set creation failed");
   } catch (std::exception& exception) {
     console_->error("{} #{}: {}\n", __FILE__, __LINE__, exception.what());
     status = false;
@@ -858,29 +1011,30 @@ std::vector<Eigen::Matrix<double, 3, 1>>
   return particle_coordinates;
 }
 
-//! Return particle vector data
+//! Return particle tensor data
 template <unsigned Tdim>
-std::vector<Eigen::Matrix<double, 3, 1>> mpm::Mesh<Tdim>::particles_vector_data(
-    const std::string& attribute) {
-  std::vector<Eigen::Matrix<double, 3, 1>> vector_data;
+template <unsigned Tsize>
+std::vector<Eigen::Matrix<double, Tsize, 1>>
+    mpm::Mesh<Tdim>::particles_tensor_data(const std::string& attribute) {
+  std::vector<Eigen::Matrix<double, Tsize, 1>> tensor_data;
   try {
     // Iterate over particles
     for (auto pitr = particles_.cbegin(); pitr != particles_.cend(); ++pitr) {
-      Eigen::Vector3d data;
+      Eigen::Matrix<double, Tsize, 1> data;
       data.setZero();
-      auto pdata = (*pitr)->vector_data(attribute);
+      auto pdata = (*pitr)->tensor_data(attribute);
       // Fill stresses to the size of dimensions
-      for (unsigned i = 0; i < Tdim; ++i) data(i) = pdata(i);
+      for (unsigned i = 0; i < pdata.size(); ++i) data(i) = pdata(i);
 
-      // Add to a vector of data
-      vector_data.emplace_back(data);
+      // Add to a tensor of data
+      tensor_data.emplace_back(data);
     }
   } catch (std::exception& exception) {
     console_->error("{} #{}: {} {}\n", __FILE__, __LINE__, exception.what(),
                     attribute);
-    vector_data.clear();
+    tensor_data.clear();
   }
-  return vector_data;
+  return tensor_data;
 }
 
 //! Return particle scalar data
@@ -1120,7 +1274,7 @@ bool mpm::Mesh<Tdim>::assign_nodal_concentrated_forces(
           "force");
 
     // Set id of -1, is all nodes
-    Container<NodeBase<Tdim>> nodes =
+    Vector<NodeBase<Tdim>> nodes =
         (set_id == -1) ? this->nodes_ : node_sets_.at(set_id);
 
     tbb::parallel_for(
@@ -1394,8 +1548,8 @@ bool mpm::Mesh<Tdim>::create_node_sets(
   try {
     // Create container for each node set
     for (auto sitr = node_sets.begin(); sitr != node_sets.end(); ++sitr) {
-      // Create a container for the set
-      Container<NodeBase<Tdim>> nodes;
+      // Create a vector for the set
+      Vector<NodeBase<Tdim>> nodes;
       // Reserve the size of the container
       nodes.reserve((sitr->second).size());
       // Add nodes to the container
@@ -1403,9 +1557,9 @@ bool mpm::Mesh<Tdim>::create_node_sets(
         bool insertion_status = nodes.add(map_nodes_[pid], check_duplicates);
       }
 
-      // Create the map of the container
+      // Create the map of the vector
       status = this->node_sets_
-                   .insert(std::pair<mpm::Index, Container<NodeBase<Tdim>>>(
+                   .insert(std::pair<mpm::Index, Vector<NodeBase<Tdim>>>(
                        sitr->first, nodes))
                    .second;
     }
@@ -1417,7 +1571,7 @@ bool mpm::Mesh<Tdim>::create_node_sets(
 
 // Return cells
 template <unsigned Tdim>
-mpm::Container<mpm::Cell<Tdim>> mpm::Mesh<Tdim>::cells() {
+mpm::Vector<mpm::Cell<Tdim>> mpm::Mesh<Tdim>::cells() {
   return this->cells_;
 }
 
@@ -1431,7 +1585,7 @@ bool mpm::Mesh<Tdim>::create_cell_sets(
     // Create container for each cell set
     for (auto sitr = cell_sets.begin(); sitr != cell_sets.end(); ++sitr) {
       // Create a container for the set
-      Container<Cell<Tdim>> cells;
+      Vector<Cell<Tdim>> cells;
       // Reserve the size of the container
       cells.reserve((sitr->second).size());
       // Add cells to the container
@@ -1441,7 +1595,7 @@ bool mpm::Mesh<Tdim>::create_cell_sets(
 
       // Create the map of the container
       status = this->cell_sets_
-                   .insert(std::pair<mpm::Index, Container<Cell<Tdim>>>(
+                   .insert(std::pair<mpm::Index, Vector<Cell<Tdim>>>(
                        sitr->first, cells))
                    .second;
     }
@@ -1468,7 +1622,9 @@ bool mpm::Mesh<Tdim>::generate_particles(const std::shared_ptr<mpm::IO>& io,
 
     // Generate particles from file
     if (generator_type == "file") {
-      status = this->read_particles_file(io, generator);
+      // Particle set id
+      unsigned pset_id = generator["pset_id"].template get<unsigned>();
+      status = this->read_particles_file(io, generator, pset_id);
     }
 
     // Generate material points at the Gauss location in all cells
@@ -1483,8 +1639,10 @@ bool mpm::Mesh<Tdim>::generate_particles(const std::shared_ptr<mpm::IO>& io,
       unsigned material_id = generator["material_id"].template get<unsigned>();
       // Cell set id
       int cset_id = generator["cset_id"].template get<int>();
+      // Particle set id
+      unsigned pset_id = generator["pset_id"].template get<unsigned>();
       status = this->generate_material_points(nparticles_dir, particle_type,
-                                              material_id, cset_id);
+                                              material_id, cset_id, pset_id);
     }
 
     // Generate material points at the Gauss location in all cells
@@ -1594,7 +1752,8 @@ void mpm::Mesh<Tdim>::inject_particles(double current_time) {
 // Read particles file
 template <unsigned Tdim>
 bool mpm::Mesh<Tdim>::read_particles_file(const std::shared_ptr<mpm::IO>& io,
-                                          const Json& generator) {
+                                          const Json& generator,
+                                          unsigned pset_id) {
   // Particle type
   auto particle_type = generator["particle_type"].template get<std::string>();
 
@@ -1618,7 +1777,7 @@ bool mpm::Mesh<Tdim>::read_particles_file(const std::shared_ptr<mpm::IO>& io,
 
   // Create particles from coordinates
   bool status = this->create_particles(particle_type, coords, material_id,
-                                       check_duplicates);
+                                       pset_id, check_duplicates);
 
   if (!status) throw std::runtime_error("Addition of particles to mesh failed");
 
