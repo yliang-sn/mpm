@@ -5,6 +5,7 @@
 #include "quadrilateral_element.h"
 #include "quadrilateral_gimp_element.h"
 #include "triangle_element.h"
+#include "hexahedron_xmpm_element.h"
 
 // Triangle 3-noded element
 static Register<mpm::Element<2>, mpm::TriangleElement<2, 3>> tri3("ED2T3");
@@ -37,3 +38,6 @@ static Register<mpm::Element<3>, mpm::HexahedronElement<3, 20>> hex20("ED3H20");
 // Quadrilateral 4-node-base GIMP element
 static Register<mpm::Element<3>, mpm::HexahedronGIMPElement<3, 64>> hex_gimp64(
     "ED3H64G");
+
+// Hexahedron xmpm 8-noded element
+static Register<mpm::Element<3>, mpm::HexahedronElementXMPM<3, 8>> hex8xmpm("ED3H8XMPM");
