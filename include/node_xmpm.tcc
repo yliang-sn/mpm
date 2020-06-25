@@ -33,6 +33,11 @@ void mpm::NodeXMPM<Tdim, Tdof, Tnphases>::initialise() noexcept {
   acceleration_.setZero();
   status_ = false;
   material_ids_.clear();
+  mass_h_.setZero();
+  momentum_h_.setZero();
+  internal_force_h_.setZero();
+  external_force_h_.setZero();
+  enrich_h_ = true;
 }
 
 //! Initialise shared pointer to nodal properties pool
@@ -48,13 +53,16 @@ void mpm::NodeXMPM<Tdim, Tdof, Tnphases>::initialise_property_handle(
 //! Update mass at the nodes from particle
 template <unsigned Tdim, unsigned Tdof, unsigned Tnphases>
 void mpm::NodeXMPM<Tdim, Tdof, Tnphases>::update_mass(bool update, unsigned phase,
-                                                  double mass) noexcept {
+                                                  double mass, double phi) noexcept {
   // Decide to update or assign
   const double factor = (update == true) ? 1. : 0.;
 
   // Update/assign mass
   std::lock_guard<std::mutex> guard(node_mutex_);
   mass_(phase) = (mass_(phase) * factor) + mass;
+  
+  if(enrich_h_)
+    mass_h_(phase) = (mass_h_(phase) * factor) + mass * sgn(phi);
 }
 
 //! Update volume at the nodes from particle
@@ -122,7 +130,7 @@ void mpm::NodeXMPM<Tdim, Tdof, Tnphases>::update_external_force(
 template <unsigned Tdim, unsigned Tdof, unsigned Tnphases>
 void mpm::NodeXMPM<Tdim, Tdof, Tnphases>::update_internal_force(
     bool update, unsigned phase,
-    const Eigen::Matrix<double, Tdim, 1>& force) noexcept {
+    const Eigen::Matrix<double, Tdim, 1>& force, double phi) noexcept {
   // Assert
   assert(phase < Tnphases);
 
@@ -132,13 +140,15 @@ void mpm::NodeXMPM<Tdim, Tdof, Tnphases>::update_internal_force(
   // Update/assign internal force
   std::lock_guard<std::mutex> guard(node_mutex_);
   internal_force_.col(phase) = internal_force_.col(phase) * factor + force;
+  if(enrich_h_)
+    internal_force_h_.col(phase) = internal_force_h_.col(phase) * factor + force*sgn(phi);
 }
 
 //! Assign nodal momentum
 template <unsigned Tdim, unsigned Tdof, unsigned Tnphases>
 void mpm::NodeXMPM<Tdim, Tdof, Tnphases>::update_momentum(
     bool update, unsigned phase,
-    const Eigen::Matrix<double, Tdim, 1>& momentum) noexcept {
+    const Eigen::Matrix<double, Tdim, 1>& momentum, double phi) noexcept {
   // Assert
   assert(phase < Tnphases);
 
@@ -148,6 +158,9 @@ void mpm::NodeXMPM<Tdim, Tdof, Tnphases>::update_momentum(
   // Update/assign momentum
   std::lock_guard<std::mutex> guard(node_mutex_);
   momentum_.col(phase) = momentum_.col(phase) * factor + momentum;
+
+  if(enrich_h_)
+    momentum_h_.col(phase) = momentum_h_.col(phase) * factor + momentum * sgn(phi);
 }
 
 //! Update pressure at the nodes from particle

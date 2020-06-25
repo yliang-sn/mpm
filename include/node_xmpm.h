@@ -69,12 +69,19 @@ class NodeXMPM : public NodeBase<Tdim> {
   //! \param[in] update A boolean to update (true) or assign (false)
   //! \param[in] phase Index corresponding to the phase
   //! \param[in] mass Mass from the particles in a cell
-  void update_mass(bool update, unsigned phase, double mass) noexcept override;
+  //! \param[in] level set value of the particle
+  void update_mass(bool update, unsigned phase, double mass) noexcept override {};
+  void update_mass(bool update, unsigned phase, double mass, double phi) noexcept override;
 
   //! Return mass at a given node for a given phase
   //! \param[in] phase Index corresponding to the phase
   double mass(unsigned phase) const override { return mass_(phase); }
+  //! Return mass_h at a given node for a given phase
+  double mass_h(unsigned phase) const override { return mass_h_(phase); }
 
+  //! Return enrich type at a given node
+  //! \param[in] phase Index corresponding to the phase
+  bool enrich_h(unsigned phase) const override { return enrich_h_;}
   //! Update volume at the nodes from particle
   //! \param[in] update A boolean to update (true) or assign (false)
   //! \param[in] phase Index corresponding to the phase
@@ -118,15 +125,22 @@ class NodeXMPM : public NodeBase<Tdim> {
   //! \param[in] update A boolean to update (true) or assign (false)
   //! \param[in] phase Index corresponding to the phase
   //! \param[in] force Internal force from the particles in a cell
+  //! \param[in] level set value of the particle
   void update_internal_force(bool update, unsigned phase,
-                             const VectorDim& force) noexcept override;
+                             const VectorDim& force) noexcept override {};
+  void update_internal_force(bool update, unsigned phase,
+                             const VectorDim& force, double phi) noexcept override;
 
   //! Return internal force at a given node for a given phase
   //! \param[in] phase Index corresponding to the phase
   VectorDim internal_force(unsigned phase) const override {
     return internal_force_.col(phase);
   }
-
+  //! Return internal force_h at a given node for a given phase
+  //! \param[in] phase Index corresponding to the phase
+  VectorDim internal_force_h(unsigned phase) const override {
+    return internal_force_h_.col(phase);
+  }
   //! Update pressure at the nodes from particle
   //! \param[in] phase Index corresponding to the phase
   //! \param[in] mass_pressure Product of mass x pressure of a particle
@@ -147,13 +161,20 @@ class NodeXMPM : public NodeBase<Tdim> {
   //! \param[in] update A boolean to update (true) or assign (false)
   //! \param[in] phase Index corresponding to the phase
   //! \param[in] momentum Momentum from the particles in a cell
+  //! \param[in] level set value of the particle
   void update_momentum(bool update, unsigned phase,
-                       const VectorDim& momentum) noexcept override;
-
+                       const VectorDim& momentum) noexcept override {};
+  void update_momentum(bool update, unsigned phase,
+                       const VectorDim& momentum, double phi) noexcept override;
+  
   //! Return momentum at a given node for a given phase
   //! \param[in] phase Index corresponding to the phase
   VectorDim momentum(unsigned phase) const override {
     return momentum_.col(phase);
+  }
+  //! Return momentum_h at a given node for a given phase
+  VectorDim momentum_h(unsigned phase) const override {
+    return momentum_h_.col(phase);
   }
 
   //! Compute velocity from the momentum
@@ -254,6 +275,8 @@ class NodeXMPM : public NodeBase<Tdim> {
                        const Eigen::MatrixXd& property_value, unsigned mat_id,
                        unsigned nprops) noexcept override;
 
+  //! return 1 if x > 0, -1 if x < 0 and 0 if x = 0 
+  inline double sgn(double x) noexcept {return (x > 0) ? 1. : ((x < 0) ? -1. : 0);};
  private:
   //! Mutex
   std::mutex node_mutex_;
@@ -271,18 +294,28 @@ class NodeXMPM : public NodeBase<Tdim> {
   bool status_{false};
   //! Mass
   Eigen::Matrix<double, 1, Tnphases> mass_;
+  //! Mass_h
+  Eigen::Matrix<double, 1, Tnphases> mass_h_;
+  //! enrich_h
+  bool enrich_h_{false};
   //! Volume
   Eigen::Matrix<double, 1, Tnphases> volume_;
   //! External force
   Eigen::Matrix<double, Tdim, Tnphases> external_force_;
   //! Internal force
   Eigen::Matrix<double, Tdim, Tnphases> internal_force_;
+  //! External force
+  Eigen::Matrix<double, Tdim, Tnphases> external_force_h_;
+  //! Internal force_h
+  Eigen::Matrix<double, Tdim, Tnphases> internal_force_h_;
   //! Pressure
   Eigen::Matrix<double, 1, Tnphases> pressure_;
   //! Velocity
   Eigen::Matrix<double, Tdim, Tnphases> velocity_;
   //! Momentum
   Eigen::Matrix<double, Tdim, Tnphases> momentum_;
+  //! Momentum_h
+  Eigen::Matrix<double, Tdim, Tnphases> momentum_h_;
   //! Acceleration
   Eigen::Matrix<double, Tdim, Tnphases> acceleration_;
   //! Velocity constraints

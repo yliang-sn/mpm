@@ -9,8 +9,8 @@ SET(CMAKE_VERBOSE_MAKEFILE OFF)
 
 # General compile settings
 IF (NOT CMAKE_BUILD_TYPE)
- #SET(CMAKE_BUILD_TYPE "Debug")
- SET(CMAKE_BUILD_TYPE "Release")
+ SET(CMAKE_BUILD_TYPE "Debug")
+ #SET(CMAKE_BUILD_TYPE "Release")
 ENDIF (NOT CMAKE_BUILD_TYPE)
 
 # GNU specific settings
@@ -153,6 +153,7 @@ include_directories(BEFORE
   ${mpm_SOURCE_DIR}/include/solvers/
   ${mpm_SOURCE_DIR}/external/
   ${mpm_SOURCE_DIR}/tests/include/
+  ${mpm_SOURCE_DIR}/include/xmpm/
 )
 
 # mpm executable
@@ -176,6 +177,7 @@ SET(mpm_src
   ${mpm_SOURCE_DIR}/src/node.cc
   ${mpm_SOURCE_DIR}/src/particle.cc
   ${mpm_SOURCE_DIR}/src/quadrature.cc
+  ${mpm_SOURCE_DIR}/src/discontinuity.cc
 )
 
 if(MPM_BUILD_LIB)

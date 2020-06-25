@@ -276,12 +276,24 @@ class ParticleXMPM : public ParticleBase<Tdim> {
   //! Return neighbour ids
   std::vector<mpm::Index> neighbours() const override { return neighbours_; };
 
+    //! Return phi of level set functions
+  double phi() const noexcept  { return phi_; };
+
+  //! Return lsm values of the particle
+  VectorDim lsmvalues() const noexcept {   
+    Eigen::Matrix<double, Tdim, 1> lsmvalues_ = {phi_,0,0};
+    return lsmvalues_; }
+
  private:
   //! Compute strain rate
   inline Eigen::Matrix<double, 6, 1> compute_strain_rate(
       const Eigen::MatrixXd& dn_dx, unsigned phase) noexcept;
 
+    //! return 1 if x > 0, -1 if x < 0 and 0 if x = 0 
+  inline double sgn(double x) noexcept {return (x > 0) ? 1. : ((x < 0) ? -1. : 0);};
+
  private:
+
   //! particle id
   using ParticleBase<Tdim>::id_;
   //! coordinates
@@ -310,6 +322,8 @@ class ParticleXMPM : public ParticleBase<Tdim> {
   double mass_;
   //! Volume
   double volume_;
+  //!particle levelset values
+  double phi_;
   //! Size of particle
   Eigen::Matrix<double, 1, Tdim> size_;
   //! Size of particle in natural coordinates
@@ -346,7 +360,6 @@ class ParticleXMPM : public ParticleBase<Tdim> {
   std::unique_ptr<spdlog::logger> console_;
   //! Map of vector properties
   std::map<std::string, std::function<Eigen::VectorXd()>> properties_;
-
 };  // ParticleXMPM class
 }  // namespace mpm
 

@@ -77,8 +77,22 @@ class NodeBase {
   virtual void update_mass(bool update, unsigned phase,
                            double mass) noexcept = 0;
 
+  //! Update mass at the nodes from particle in xmpm
+  //! \param[in] update A boolean to update (true) or assign (false)
+  //! \param[in] phase Index corresponding to the phase
+  //! \param[in] mass Mass from the particles in a cell
+  //! \param[in] level set value of the particle
+  virtual void update_mass(bool update, unsigned phase,
+                           double mass, double phi) noexcept {};
+
   //! Return mass at a given node for a given phase
   virtual double mass(unsigned phase) const = 0;
+  //! Return mass_h at a given node for a given phase
+  virtual double mass_h(unsigned phase) const {};
+
+
+  //! Return enrich type at a given node
+  virtual bool enrich_h(unsigned phase) const {};
 
   //! Update volume at the nodes from particle
   //! \param[in] update A boolean to update (true) or assign (false)
@@ -123,10 +137,18 @@ class NodeBase {
   virtual void update_internal_force(bool update, unsigned phase,
                                      const VectorDim& force) noexcept = 0;
 
+  //! Update internal force (body force / traction force) in XMPM
+  //! \param[in] update A boolean to update (true) or assign (false)
+  //! \param[in] phase Index corresponding to the phase
+  //! \param[in] force Internal force from the particles in a cell
+  //! \param[in] level set value of the particle
+  virtual void update_internal_force(bool update, unsigned phase,
+                                     const VectorDim& force, double phi) noexcept {};
   //! Return internal force
   //! \param[in] phase Index corresponding to the phase
   virtual VectorDim internal_force(unsigned phase) const = 0;
-
+//! Return internal force_h
+  virtual VectorDim internal_force_h(unsigned phase) const {};
   //! Update pressure at the nodes from particle
   //! \param[in] phase Index corresponding to the phase
   //! \param[in] mass_pressure Product of mass x pressure of a particle
@@ -150,10 +172,26 @@ class NodeBase {
   virtual void update_momentum(bool update, unsigned phase,
                                const VectorDim& momentum) noexcept = 0;
 
+  //! Update nodal momentum in xmpm
+  //! \param[in] update A boolean to update (true) or assign (false)
+  //! \param[in] phase Index corresponding to the phase
+  //! \param[in] momentum Momentum from the particles in a cell
+  //! \param[in] level set value of the particle
+  virtual void update_momentum(bool update, unsigned phase,
+                               const VectorDim& momentum, double phi) noexcept {};
+
+//   //! Update nodal momentum xmpm
+//   //! \param[in] update A boolean to update (true) or assign (false)
+//   //! \param[in] phase Index corresponding to the phase
+//   //! \param[in] momentum Momentum from the particles in a cell
+//   virtual void update_momentum(bool update, unsigned phase,
+//                                const VectorDim& momentum, bool phi) noexcept = 0;
+
   //! Return momentum
   //! \param[in] phase Index corresponding to the phase
   virtual VectorDim momentum(unsigned phase) const = 0;
-
+  //! Return momentum_h
+  virtual VectorDim momentum_h(unsigned phase) const {};
   //! Compute velocity from the momentum
   virtual void compute_velocity() = 0;
 

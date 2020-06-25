@@ -70,7 +70,7 @@ class Node : public NodeBase<Tdim> {
   //! \param[in] phase Index corresponding to the phase
   //! \param[in] mass Mass from the particles in a cell
   void update_mass(bool update, unsigned phase, double mass) noexcept override;
-
+ 
   //! Return mass at a given node for a given phase
   //! \param[in] phase Index corresponding to the phase
   double mass(unsigned phase) const override { return mass_(phase); }

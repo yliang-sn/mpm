@@ -236,6 +236,15 @@ void mpm::Particle<Tdim>::initialise() {
   velocity_.setZero();
   volume_ = std::numeric_limits<double>::max();
   volumetric_strain_centroid_ = 0.;
+  if(this->coordinates_[0] > 0.5)
+  {
+      velocity_[0] = 1;
+      
+  }
+  else
+  {
+      velocity_[0] = 1;
+  }
 
   // Initialize vector data properties
   this->properties_["stresses"] = [&]() { return stress(); };

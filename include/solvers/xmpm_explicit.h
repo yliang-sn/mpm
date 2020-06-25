@@ -6,6 +6,7 @@
 #endif
 
 #include "mpm_base.h"
+#include "discontinuity_base.h"
 
 namespace mpm {
 
@@ -29,6 +30,9 @@ class XMPMExplicit : public MPMBase<Tdim> {
   //! Compute stress strain
   //! \param[in] phase Phase to smooth pressure
   void compute_stress_strain(unsigned phase);
+
+  //! Initialise discontinuities
+  bool initialise_discontinuities();
 
  protected:
   // Generate a unique id for the analysis
@@ -79,6 +83,10 @@ class XMPMExplicit : public MPMBase<Tdim> {
   bool pressure_smoothing_{false};
   //! Interface
   bool interface_{false};
+  //! Discontinuity statue
+  bool discontinuity_{false};  
+  //! discontinuities
+  std::map<unsigned, std::shared_ptr<mpm::DiscontinuityBase <Tdim>>> discontinuities_;
 
 };  // XMPMExplicit class
 }  // namespace mpm

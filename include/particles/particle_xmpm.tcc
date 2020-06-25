@@ -236,12 +236,25 @@ void mpm::ParticleXMPM<Tdim>::initialise() {
   velocity_.setZero();
   volume_ = std::numeric_limits<double>::max();
   volumetric_strain_centroid_ = 0.;
+  //phi_
+  if(this->coordinates_[0] > 0.5)
+  {
+      phi_ =  1;
+      velocity_[0] = 1;
+      
+  }
+  else
+  {
+      phi_ =  -1;
+      velocity_[0] = -1;
+  }
 
   // Initialize vector data properties
   this->properties_["stresses"] = [&]() { return stress(); };
   this->properties_["strains"] = [&]() { return strain(); };
   this->properties_["velocities"] = [&]() { return velocity(); };
   this->properties_["displacements"] = [&]() { return displacement(); };
+  this->properties_["phi"] = [&]() { return lsmvalues(); };
 }
 
 //! Assign material state variables from neighbour particle
@@ -496,9 +509,9 @@ void mpm::ParticleXMPM<Tdim>::map_mass_momentum_to_nodes() noexcept {
   // Map mass and momentum to nodes
   for (unsigned i = 0; i < nodes_.size(); ++i) {
     nodes_[i]->update_mass(true, mpm::ParticlePhase::Solid,
-                           mass_ * shapefn_[i]);
+                           mass_ * shapefn_[i],phi_);
     nodes_[i]->update_momentum(true, mpm::ParticlePhase::Solid,
-                               mass_ * shapefn_[i] * velocity_);
+                               mass_ * shapefn_[i] * velocity_,phi_);
   }
 }
 
@@ -563,8 +576,23 @@ inline Eigen::Matrix<double, 6, 1> mpm::ParticleXMPM<3>::compute_strain_rate(
   // Define strain rate
   Eigen::Matrix<double, 6, 1> strain_rate = Eigen::Matrix<double, 6, 1>::Zero();
 
+  const double tolerance = 1.E-16;
+  
   for (unsigned i = 0; i < this->nodes_.size(); ++i) {
-    Eigen::Matrix<double, 3, 1> vel = nodes_[i]->velocity(phase);
+
+    Eigen::Matrix<double, 3, 1> vel;
+
+    if(nodes_[i]->enrich_h(phase))
+    {
+      double nodal_mass = nodes_[i]->mass(phase)  + sgn(phi_) *  nodes_[i]->mass_h(phase);
+      if (nodal_mass < tolerance)
+        continue;
+
+      vel = (nodes_[i]->momentum(phase)  + sgn(phi_) *  nodes_[i]->momentum_h(phase))/nodal_mass;
+    }
+    else
+      vel = nodes_[i]->velocity(phase);
+      //nodes_[i]->velocity(phase);
     strain_rate[0] += dn_dx(i, 0) * vel[0];
     strain_rate[1] += dn_dx(i, 1) * vel[1];
     strain_rate[2] += dn_dx(i, 2) * vel[2];
@@ -626,7 +654,7 @@ inline void mpm::ParticleXMPM<1>::map_internal_force() noexcept {
     Eigen::Matrix<double, 1, 1> force;
     force[0] = -1. * dn_dx_(i, 0) * volume_ * stress_[0];
 
-    nodes_[i]->update_internal_force(true, mpm::ParticlePhase::Solid, force);
+    nodes_[i]->update_internal_force(true, mpm::ParticlePhase::Solid, force, phi_);
   }
 }
 
@@ -718,20 +746,45 @@ void mpm::ParticleXMPM<Tdim>::compute_updated_position(
   // Get interpolated nodal velocity
   Eigen::Matrix<double, Tdim, 1> nodal_velocity =
       Eigen::Matrix<double, Tdim, 1>::Zero();
-
+  const double tolerance = 1.E-16;
+  unsigned int phase = mpm::ParticlePhase::Solid;
   for (unsigned i = 0; i < nodes_.size(); ++i)
-    nodal_velocity +=
-        shapefn_[i] * nodes_[i]->velocity(mpm::ParticlePhase::Solid);
+  {
 
+    if(nodes_[i]->enrich_h(phase))
+    {
+      double nodal_mass = nodes_[i]->mass(phase)  + sgn(phi_) *  nodes_[i]->mass_h(phase);
+      if (nodal_mass < tolerance)
+        continue;
+
+      nodal_velocity += shapefn_[i] *  
+        (nodes_[i]->momentum(phase)  + sgn(phi_) *  nodes_[i]->momentum_h(phase))/nodal_mass;
+    }
+    else
+      nodal_velocity +=
+        shapefn_[i] * nodes_[i]->velocity(phase);
+  }
   // Acceleration update
   if (!velocity_update) {
     // Get interpolated nodal acceleration
     Eigen::Matrix<double, Tdim, 1> nodal_acceleration =
         Eigen::Matrix<double, Tdim, 1>::Zero();
     for (unsigned i = 0; i < nodes_.size(); ++i)
-      nodal_acceleration +=
-          shapefn_[i] * nodes_[i]->acceleration(mpm::ParticlePhase::Solid);
+    {
 
+      if(nodes_[i]->enrich_h(phase))
+      {
+        double nodal_mass = nodes_[i]->mass(phase)  + sgn(phi_) *  nodes_[i]->mass_h(phase);
+        if (nodal_mass < tolerance)
+          continue;
+
+        nodal_velocity += shapefn_[i] *  
+          (nodes_[i]->internal_force(phase)  + sgn(phi_) *  nodes_[i]->internal_force_h(phase))/nodal_mass;
+      }
+      else
+        nodal_acceleration +=
+          shapefn_[i] * nodes_[i]->acceleration(phase);
+    }
     // Update particle velocity from interpolated nodal acceleration
     this->velocity_ += nodal_acceleration * dt;
   }

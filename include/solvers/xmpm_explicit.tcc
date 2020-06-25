@@ -56,6 +56,58 @@ void mpm::XMPMExplicit<Tdim>::compute_stress_strain(unsigned phase) {
       &mpm::ParticleBase<Tdim>::compute_stress, std::placeholders::_1));
 }
 
+// Initialise discontinuities
+template <unsigned Tdim>
+bool mpm::XMPMExplicit<Tdim>::initialise_discontinuities() {
+  bool status = true;
+  try {
+      // Get discontinuities data
+    auto json_discontinuities = io_->json_object("discontinuity");
+
+    for (const auto discontinuity_props : json_discontinuities) {
+      // Get discontinuity type
+      const std::string discontunity_type =
+          discontinuity_props["type"].template get<std::string>();
+
+      // Get discontinuity id
+      auto discontinuity_id = discontinuity_props["id"].template get<unsigned>();
+
+        // Get discontinuity  input type
+      auto io_type = discontinuity_props["io_type"].template get<std::string>();
+
+      // discontinuity file
+      std::string discontinuity_file =
+          io_->file_name(discontinuity_props["file"].template get<std::string>());
+
+          // Create a mesh reader
+      auto discontunity_io = Factory<mpm::IOMesh<Tdim>>::instance()->create(io_type);
+      
+      // Create a new discontinuity surface from JSON object
+      auto discontinuity =
+          Factory<mpm::DiscontinuityBase<Tdim>>::instance()
+              ->create(discontunity_type);
+
+      bool status = 
+        discontinuity->initialize(discontunity_io->read_mesh_nodes(discontinuity_file),discontunity_io->read_mesh_cells(discontinuity_file));
+       // Create points from file
+  
+      // Add discontinuity to list
+      auto result = discontinuities_.insert(std::make_pair(discontinuity_id, discontinuity));
+
+      // If insert discontinuity failed
+      if (!result.second) {
+        status = false;
+        throw std::runtime_error(
+            "New discontinuity cannot be added, insertion failed");
+      }
+    }
+  } catch (std::exception& exception) {
+    console_->error("#{}: Reading discontinuities: {}", __LINE__, exception.what());
+    status = false;
+  }
+  return status;
+}
+
 //! MPM Explicit solver
 template <unsigned Tdim>
 bool mpm::XMPMExplicit<Tdim>::solve() {
@@ -91,6 +143,9 @@ bool mpm::XMPMExplicit<Tdim>::solve() {
   if (analysis_.find("interface") != analysis_.end())
     interface_ = analysis_.at("interface").template get<bool>();
 
+  // Discontinuity
+  if (!io_->json_object("discontinuity").empty())
+    discontinuity_ = true;
   // Initialise material
   bool mat_status = this->initialise_materials();
   if (!mat_status) {
@@ -117,6 +172,16 @@ bool mpm::XMPMExplicit<Tdim>::solve() {
   if (!loading_status) {
     status = false;
     throw std::runtime_error("Initialisation of loading failed");
+  }
+
+  // Initialise discontinuity
+  if (discontinuity_)
+  {
+    bool discontinuity_status = this->initialise_discontinuities();
+    if (!discontinuity_status) {
+      status = false;
+      throw std::runtime_error("Initialisation of discontinuities failed");
+    }
   }
 
   // Compute mass
