@@ -276,6 +276,13 @@ class ParticleXMPM : public ParticleBase<Tdim> {
   //! Return neighbour ids
   std::vector<mpm::Index> neighbours() const override { return neighbours_; };
 
+    //! set the level set function values
+  virtual void set_phi(const double phivalue) 
+  {
+    phi_ = phivalue;
+    if(phi_ > 0)  velocity_[2] = -1;
+    else  velocity_[2] = 0;
+  };
     //! Return phi of level set functions
   double phi() const noexcept  { return phi_; };
 

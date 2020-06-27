@@ -450,6 +450,9 @@ class Mesh {
   //! Inject particles
   void inject_particles(double current_time);
 
+//! Set particles lsm values
+  void set_particle_phi(std::vector<double>& phi_list);
+
  private:
   // Read particles from file
   //! \param[in] pset_id Set ID of the particles

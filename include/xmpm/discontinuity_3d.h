@@ -50,6 +50,11 @@ class Discontinuity_3D : public DiscontinuityBase<Tdim> {
   VectorDim ThreeCross(const VectorDim& a,const VectorDim& b,const VectorDim& c);
 
 
+  //return the phi of each doordinates
+  //! \param[in] the vector of the coordinates
+  virtual void compute_phi(const std::vector<VectorDim>& coordinates, std::vector<double>& phi_list) override;
+
+
  protected:
 
   using mpm::DiscontinuityBase<Tdim>::points_;

@@ -38,6 +38,10 @@ void mpm::NodeXMPM<Tdim, Tdof, Tnphases>::initialise() noexcept {
   internal_force_h_.setZero();
   external_force_h_.setZero();
   enrich_h_ = true;
+  direction_discontinuity_.setZero();
+  direction_discontinuity_.col(0)(0) = 0.4472136;
+  direction_discontinuity_.col(0)(1)= 0.0;
+  direction_discontinuity_.col(0)(2) = 0.8944272;
 }
 
 //! Initialise shared pointer to nodal properties pool
@@ -161,6 +165,7 @@ void mpm::NodeXMPM<Tdim, Tdof, Tnphases>::update_momentum(
 
   if(enrich_h_)
     momentum_h_.col(phase) = momentum_h_.col(phase) * factor + momentum * sgn(phi);
+
 }
 
 //! Update pressure at the nodes from particle
@@ -282,6 +287,7 @@ bool mpm::NodeXMPM<Tdim, Tdof, Tnphases>::compute_acceleration_velocity_cundall(
     // when velocity is set.
     this->apply_velocity_constraints();
 
+    this->self_contact_discontinuity(dt);
     // Set a threshold
     for (unsigned i = 0; i < Tdim; ++i)
       if (std::abs(velocity_.col(phase)(i)) < tolerance)
@@ -330,6 +336,8 @@ void mpm::NodeXMPM<Tdim, Tdof, Tnphases>::apply_velocity_constraints() {
     if (!generic_boundary_constraints_) {
       // Velocity constraints are applied on Cartesian boundaries
       this->velocity_(direction, phase) = constraint.second;
+      this->momentum_(direction, phase) = this->mass(phase) * constraint.second;
+      this->momentum_h_(direction, phase) = this->mass_h_(phase) * constraint.second;
       // Set acceleration to 0 in direction of velocity constraint
       this->acceleration_(direction, phase) = 0.;
     } else {
@@ -350,6 +358,27 @@ void mpm::NodeXMPM<Tdim, Tdof, Tnphases>::apply_velocity_constraints() {
       this->acceleration_ = rotation_matrix_ * local_acceleration;
     }
   }
+}
+
+//! Apply velocity constraints
+template <unsigned Tdim, unsigned Tdof, unsigned Tnphases>
+void mpm::NodeXMPM<Tdim, Tdof, Tnphases>::self_contact_discontinuity(double dt) {
+
+  if(!enrich_h_)
+    return;
+  
+  unsigned  phase = 0; 
+
+  double velocity_norm = velocity_.col(phase).dot(this->direction_discontinuity_.col(0));
+  this->velocity_.col(phase) = this->velocity_.col(phase) - velocity_norm*this->direction_discontinuity_.col(0);
+
+  double momentum_norm = momentum_.col(phase).dot(this->direction_discontinuity_.col(0));
+
+  this->momentum_.col(phase) = this->momentum_.col(phase) - momentum_norm*this->direction_discontinuity_.col(0);
+
+  double momentum_norm_h = momentum_h_.col(phase).dot(this->direction_discontinuity_.col(0));
+
+  this->momentum_h_.col(phase) = this->momentum_h_.col(phase) - momentum_norm_h*this->direction_discontinuity_.col(0);
 }
 
 //! Assign friction constraint

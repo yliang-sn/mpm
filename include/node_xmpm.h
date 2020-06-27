@@ -233,6 +233,10 @@ class NodeXMPM : public NodeBase<Tdim> {
   //! \param[in] dt Time-step
   void apply_friction_constraints(double dt) override;
 
+  //! Apply self-contact of the discontinuity
+  //! \param[in] dt Time-step
+  void self_contact_discontinuity(double dt) override;
+
   //! Assign rotation matrix
   //! \param[in] rotation_matrix Rotation matrix of the node
   void assign_rotation_matrix(
@@ -308,6 +312,8 @@ class NodeXMPM : public NodeBase<Tdim> {
   Eigen::Matrix<double, Tdim, Tnphases> external_force_h_;
   //! Internal force_h
   Eigen::Matrix<double, Tdim, Tnphases> internal_force_h_;
+  //! direction of the discontinuity at the node 
+  Eigen::Matrix<double, Tdim, 1> direction_discontinuity_;
   //! Pressure
   Eigen::Matrix<double, 1, Tnphases> pressure_;
   //! Velocity

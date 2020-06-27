@@ -107,7 +107,6 @@ bool mpm::XMPMExplicit<Tdim>::initialise_discontinuities() {
   }
   return status;
 }
-
 //! MPM Explicit solver
 template <unsigned Tdim>
 bool mpm::XMPMExplicit<Tdim>::solve() {
@@ -182,6 +181,12 @@ bool mpm::XMPMExplicit<Tdim>::solve() {
       status = false;
       throw std::runtime_error("Initialisation of discontinuities failed");
     }
+
+    bool initialise_lsm_status = this->initialise_lsm();
+    if (!discontinuity_status) {
+      status = false;
+      throw std::runtime_error("Initialisation of level set method failed");
+    }    
   }
 
   // Compute mass
@@ -375,6 +380,35 @@ bool mpm::XMPMExplicit<Tdim>::solve() {
       std::chrono::duration_cast<std::chrono::milliseconds>(solver_end -
                                                             solver_begin)
           .count());
+
+  return status;
+}
+
+
+// Initialise particles
+template <unsigned Tdim>
+bool mpm::XMPMExplicit<Tdim>::initialise_lsm() {
+
+  bool status = true;
+
+  try {
+
+    for(mpm::Index i=0; i<ndiscontinuities();++i){
+
+      std::vector<double> phi_list(mesh_->nparticles());
+
+      discontinuities_[i]->compute_phi(mesh_->particle_coordinates(),  phi_list);
+
+      mesh_->set_particle_phi(phi_list);      
+    }
+
+  } catch (std::exception& exception) {
+    console_->error("#{}: XMPM initialise particles LSM: {}", __LINE__,
+                    exception.what());
+    status = false;
+  }
+
+  if (!status) throw std::runtime_error("Initialisation of particles LSM values failed");
 
   return status;
 }

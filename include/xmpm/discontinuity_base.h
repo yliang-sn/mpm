@@ -68,6 +68,10 @@ class DiscontinuityBase {
   //! create elements from file
   virtual bool create_elements(const std::vector<std::vector<mpm::Index>>& elements) {};
 
+  //return the phi of each doordinates
+  //! \param[in] the vector of the coordinates
+  virtual void compute_phi(const std::vector<VectorDim>& coordinates, std::vector<double>& phi_list)  = 0;
+
 
   protected:
 
@@ -112,6 +116,9 @@ struct discontinuous_element
     inline void set_center(VectorDim & center) {center_ = center; }
     
     inline void set_normal(VectorDim & normal) {normal_ = normal; }
+
+    double  Vertical_distance (const VectorDim & coor) const {return (coor[0]-center_[0])*normal_[0]+(coor[1]-center_[1])*normal_[1]+(coor[2]-center_[2])*normal_[2];};
+
     private:
     //! points indices
     Eigen::Matrix<mpm::Index, 3, 1> points_;

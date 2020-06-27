@@ -236,18 +236,7 @@ void mpm::ParticleXMPM<Tdim>::initialise() {
   velocity_.setZero();
   volume_ = std::numeric_limits<double>::max();
   volumetric_strain_centroid_ = 0.;
-  //phi_
-  if(this->coordinates_[0] > 0.5)
-  {
-      phi_ =  1;
-      velocity_[0] = 1;
-      
-  }
-  else
-  {
-      phi_ =  -1;
-      velocity_[0] = -1;
-  }
+  phi_ = 0;
 
   // Initialize vector data properties
   this->properties_["stresses"] = [&]() { return stress(); };
@@ -870,3 +859,5 @@ void mpm::ParticleXMPM<Tdim>::assign_neighbours(
   neighbours_.erase(std::remove(neighbours_.begin(), neighbours_.end(), id_),
                     neighbours_.end());
 }
+
+

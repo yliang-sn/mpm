@@ -243,6 +243,10 @@ class NodeBase {
   //! \param[in] dt Time-step
   virtual void apply_friction_constraints(double dt) = 0;
 
+    //! Apply self-contact of the discontinuity
+  //! \param[in] dt Time-step
+  virtual void self_contact_discontinuity(double dt) {};
+
   //! Assign rotation matrix
   //! \param[in] rotation_matrix Rotation matrix of the node
   virtual void assign_rotation_matrix(

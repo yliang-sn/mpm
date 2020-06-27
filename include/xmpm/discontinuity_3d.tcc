@@ -63,32 +63,6 @@ bool mpm::Discontinuity_3D<Tdim>::create_elements(const std::vector<std::vector<
       console_->error("{} #{}: {}\n", __FILE__, __LINE__, exception.what());
       status = false;
     }
-
-
-    // for(auto point &:)
-    // try {
-    //   for(unsigned int i= 0;i<nb_surface; i++)
-    //   {
-    //     surface * sur = &surface_list[i];
-    //     point* p1 = &point_list[sur->pointid[0]];
-    //     point* p2 = &point_list[sur->pointid[1]];
-    //     point* p3 = &point_list[sur->pointid[2]];
-    //     sur->A = ((p2->xp[1] - p1->xp[1]) * (p3->xp[2] - p1->xp[2]) - (p2->xp[2] - p1->xp[2]) * (p3->xp[1] - p1->xp[1]));
-    //     sur->B = ((p2->xp[2] - p1->xp[2]) * (p3->xp[0] - p1->xp[0]) - (p2->xp[0] - p1->xp[0]) * (p3->xp[2] - p1->xp[2])) ;
-    //     sur->C = ((p2->xp[0] - p1->xp[0]) * (p3->xp[1] - p1->xp[1]) - (p2->xp[1] - p1->xp[1]) * (p3->xp[0] - p1->xp[0]));
-        
-    //     MPM_FLOAT det = sqrt(sur->A*sur->A + sur->B*sur->B + sur->C*sur->C);
-
-    //     sur->A = sur->A/det;
-    //     sur->B = sur->B/det;
-    //     sur->C = sur->C/det;
-      
-    //     sur->D = -(sur->A*p1->xp[0] + sur->B*p1->xp[1] + sur->C*p1->xp[2]);
-    //   }
-    // } catch (std::exception& exception) {
-    //   console_->error("{} #{}: {}\n", __FILE__, __LINE__, exception.what());
-    //   status = false;
-    // }
     return status;    
   }
 
@@ -101,4 +75,24 @@ Eigen::Matrix<double, Tdim, 1> mpm::Discontinuity_3D<Tdim>::ThreeCross(const Vec
     threecross[1]=(b[2]-a[2])*(c[0]-b[0])-(b[0]-a[0])*(c[2]-b[2]);
     threecross[2]=(b[0]-a[0])*(c[1]-b[1])-(b[1]-a[1])*(c[0]-b[0]);
     return threecross;
+}
+
+//return the phi of each doordinates
+//! \param[in] the vector of the coordinates
+template <unsigned Tdim>
+void  mpm::Discontinuity_3D<Tdim>::compute_phi(const std::vector<VectorDim>& coordinates,std::vector<double>& phi_list){
+
+  mpm::Index i = 0;
+  for(const auto& coor:coordinates)
+  {
+    double distance = std::numeric_limits<double>::max();
+    for(const auto& element:elements_)
+    {
+      double Vertical_distance_ = element.Vertical_distance(coor);// Vertical_distance(coor);
+      distance = std::abs(distance) < std::abs(Vertical_distance_)? distance:Vertical_distance_;
+    }
+    
+    phi_list[i] = distance;
+    ++i;
+  }
 }

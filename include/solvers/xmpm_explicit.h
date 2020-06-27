@@ -34,6 +34,12 @@ class XMPMExplicit : public MPMBase<Tdim> {
   //! Initialise discontinuities
   bool initialise_discontinuities();
 
+  //! Initialise the level set function values
+  bool initialise_lsm();
+
+  //return the number of discontinuities
+  mpm::Index ndiscontinuities(){return discontinuities_.size();};
+
  protected:
   // Generate a unique id for the analysis
   using mpm::MPMBase<Tdim>::uuid_;

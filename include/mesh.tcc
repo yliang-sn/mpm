@@ -1883,3 +1883,16 @@ bool mpm::Mesh<Tdim>::assign_nodal_friction_constraints(
   }
   return status;
 }
+
+
+//! Set particles lsm values
+template <unsigned Tdim>
+void mpm::Mesh<Tdim>::set_particle_phi(std::vector<double>& phi_list)
+{
+  
+  for(mpm::Index i = 0; i<nparticles();++i)
+  {
+    double phi = phi_list[i];
+    particles_[i]->set_phi(phi);
+  }
+}
