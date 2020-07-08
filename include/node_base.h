@@ -92,7 +92,7 @@ class NodeBase {
 
 
   //! Return enrich type at a given node
-  virtual bool enrich_h(unsigned phase) const {};
+  virtual bool enrich_h() const {};
 
   //! Update volume at the nodes from particle
   //! \param[in] update A boolean to update (true) or assign (false)
@@ -126,9 +126,21 @@ class NodeBase {
   virtual void update_external_force(bool update, unsigned phase,
                                      const VectorDim& force) noexcept = 0;
 
+  //! Update external force (body force / traction force)
+  //! \param[in] update A boolean to update (true) or assign (false)
+  //! \param[in] phase Index corresponding to the phase
+  //! \param[in] force External force from the particles in a cell
+  //! \param[in]  level set value of the particle
+  virtual void update_external_force(bool update, unsigned phase,
+                             const VectorDim& force, double phi) noexcept {};
+
   //! Return external force
   //! \param[in] phase Index corresponding to the phase
   virtual VectorDim external_force(unsigned phase) const = 0;
+
+  //! Return external force_h
+  //! \param[in] phase Index corresponding to the phase
+  virtual VectorDim external_force_h(unsigned phase) const {};
 
   //! Update internal force (body force / traction force)
   //! \param[in] update A boolean to update (true) or assign (false)
@@ -221,6 +233,13 @@ class NodeBase {
   //! \param[in] damping_factor Damping factor
   virtual bool compute_acceleration_velocity_cundall(
       unsigned phase, double dt, double damping_factor) noexcept = 0;
+
+  
+    //! Compute momentum
+  //! \param[in] phase Index corresponding to the phase
+  //! \param[in] dt Timestep in analysis
+  virtual bool intergrate_momentum(
+      unsigned phase, double dt) noexcept {};
 
   //! Assign velocity constraint
   //! Directions can take values between 0 and Dim * Nphases

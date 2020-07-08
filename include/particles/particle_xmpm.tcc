@@ -571,7 +571,7 @@ inline Eigen::Matrix<double, 6, 1> mpm::ParticleXMPM<3>::compute_strain_rate(
 
     Eigen::Matrix<double, 3, 1> vel;
 
-    if(nodes_[i]->enrich_h(phase))
+    if(nodes_[i]->enrich_h())
     {
       double nodal_mass = nodes_[i]->mass(phase)  + sgn(phi_) *  nodes_[i]->mass_h(phase);
       if (nodal_mass < tolerance)
@@ -631,7 +631,7 @@ void mpm::ParticleXMPM<Tdim>::map_body_force(const VectorDim& pgravity) noexcept
   // Compute nodal body forces
   for (unsigned i = 0; i < nodes_.size(); ++i)
     nodes_[i]->update_external_force(true, mpm::ParticlePhase::Solid,
-                                     (pgravity * mass_ * shapefn_(i)));
+                                     (pgravity * mass_ * shapefn_(i)), phi_);
 }
 
 //! Map internal force
@@ -681,7 +681,7 @@ inline void mpm::ParticleXMPM<3>::map_internal_force() noexcept {
 
     force *= -1. * this->volume_;
 
-    nodes_[i]->update_internal_force(true, mpm::ParticlePhase::Solid, force);
+    nodes_[i]->update_internal_force(true, mpm::ParticlePhase::Solid, force, phi_);
   }
 }
 
@@ -722,7 +722,7 @@ void mpm::ParticleXMPM<Tdim>::map_traction_force() noexcept {
     // Map particle traction forces to nodes
     for (unsigned i = 0; i < nodes_.size(); ++i)
       nodes_[i]->update_external_force(true, mpm::ParticlePhase::Solid,
-                                       (shapefn_[i] * traction_));
+                                       (shapefn_[i] * traction_), phi_);
   }
 }
 
@@ -740,7 +740,7 @@ void mpm::ParticleXMPM<Tdim>::compute_updated_position(
   for (unsigned i = 0; i < nodes_.size(); ++i)
   {
 
-    if(nodes_[i]->enrich_h(phase))
+    if(nodes_[i]->enrich_h())
     {
       double nodal_mass = nodes_[i]->mass(phase)  + sgn(phi_) *  nodes_[i]->mass_h(phase);
       if (nodal_mass < tolerance)
@@ -750,8 +750,14 @@ void mpm::ParticleXMPM<Tdim>::compute_updated_position(
         (nodes_[i]->momentum(phase)  + sgn(phi_) *  nodes_[i]->momentum_h(phase))/nodal_mass;
     }
     else
+    {
+      double nodal_mass = nodes_[i]->mass(phase);
+      if (nodal_mass < tolerance)
+        continue;
       nodal_velocity +=
-        shapefn_[i] * nodes_[i]->velocity(phase);
+        shapefn_[i] * nodes_[i]->momentum(phase)/nodal_mass;
+    }
+
   }
   // Acceleration update
   if (!velocity_update) {
@@ -761,18 +767,28 @@ void mpm::ParticleXMPM<Tdim>::compute_updated_position(
     for (unsigned i = 0; i < nodes_.size(); ++i)
     {
 
-      if(nodes_[i]->enrich_h(phase))
+      if(nodes_[i]->enrich_h())
       {
         double nodal_mass = nodes_[i]->mass(phase)  + sgn(phi_) *  nodes_[i]->mass_h(phase);
         if (nodal_mass < tolerance)
           continue;
 
-        nodal_velocity += shapefn_[i] *  
-          (nodes_[i]->internal_force(phase)  + sgn(phi_) *  nodes_[i]->internal_force_h(phase))/nodal_mass;
+        auto force = nodes_[i]->internal_force(phase)  + sgn(phi_) *  nodes_[i]->internal_force_h(phase) + 
+                    nodes_[i]->external_force(phase)  + sgn(phi_) *  nodes_[i]->external_force_h(phase);
+
+        nodal_acceleration += shapefn_[i] *  force / nodal_mass;
       }
       else
+      {
+        double nodal_mass = nodes_[i]->mass(phase);
+        if (nodal_mass < tolerance)
+          continue;
+
+        auto force = nodes_[i]->internal_force(phase) + nodes_[i]->external_force(phase);
+
         nodal_acceleration +=
-          shapefn_[i] * nodes_[i]->acceleration(phase);
+          shapefn_[i] * force / nodal_mass;
+      }
     }
     // Update particle velocity from interpolated nodal acceleration
     this->velocity_ += nodal_acceleration * dt;

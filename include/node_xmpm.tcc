@@ -39,9 +39,10 @@ void mpm::NodeXMPM<Tdim, Tdof, Tnphases>::initialise() noexcept {
   external_force_h_.setZero();
   enrich_h_ = true;
   direction_discontinuity_.setZero();
-  direction_discontinuity_.col(0)(0) = 0.4472136;
-  direction_discontinuity_.col(0)(1)= 0.0;
-  direction_discontinuity_.col(0)(2) = 0.8944272;
+  direction_discontinuity_(0,0) = 0.4472136;
+  direction_discontinuity_(1,0)= 0.0;
+  direction_discontinuity_(2,0) = 0.8944272;
+  frictional_coef = 0.75;
 }
 
 //! Initialise shared pointer to nodal properties pool
@@ -128,6 +129,26 @@ void mpm::NodeXMPM<Tdim, Tdof, Tnphases>::update_external_force(
   // Update/assign external force
   std::lock_guard<std::mutex> guard(node_mutex_);
   external_force_.col(phase) = external_force_.col(phase) * factor + force;
+}
+
+//! Update external force (body force / traction force)
+template <unsigned Tdim, unsigned Tdof, unsigned Tnphases>
+void mpm::NodeXMPM<Tdim, Tdof, Tnphases>::update_external_force(
+    bool update, unsigned phase,
+    const Eigen::Matrix<double, Tdim, 1>& force, double phi) noexcept {
+  // Assert
+  assert(phase < Tnphases);
+
+  // Decide to update or assign
+  const double factor = (update == true) ? 1. : 0.;
+
+  // Update/assign external force
+  std::lock_guard<std::mutex> guard(node_mutex_);
+  external_force_.col(phase) = external_force_.col(phase) * factor + force;
+
+  if(enrich_h_)
+    external_force_h_.col(phase) = external_force_h_.col(phase) * factor + sgn(phi)*force;
+
 }
 
 //! Update internal force (body force / traction force)
@@ -286,8 +307,6 @@ bool mpm::NodeXMPM<Tdim, Tdof, Tnphases>::compute_acceleration_velocity_cundall(
     // Apply velocity constraints, which also sets acceleration to 0,
     // when velocity is set.
     this->apply_velocity_constraints();
-
-    this->self_contact_discontinuity(dt);
     // Set a threshold
     for (unsigned i = 0; i < Tdim; ++i)
       if (std::abs(velocity_.col(phase)(i)) < tolerance)
@@ -298,6 +317,29 @@ bool mpm::NodeXMPM<Tdim, Tdof, Tnphases>::compute_acceleration_velocity_cundall(
     status = true;
   }
   return status;
+}
+
+//! Compute acceleration and velocity with cundall damping factor
+template <unsigned Tdim, unsigned Tdof, unsigned Tnphases>
+bool mpm::NodeXMPM<Tdim, Tdof, Tnphases>::intergrate_momentum(
+    unsigned phase, double dt) noexcept {
+  
+
+  momentum_.col(phase) = momentum_.col(phase) 
+    + (internal_force_.col(phase)  + external_force_.col(phase)) * dt;
+  if(enrich_h_)
+    momentum_h_.col(phase) = momentum_h_.col(phase) 
+      + (internal_force_h_.col(phase) + external_force_h_.col(phase)) * dt;
+  // Apply velocity constraints, which also sets acceleration to 0,
+  // when velocity is set.
+  this->apply_velocity_constraints();
+
+  this->self_contact_discontinuity(dt);
+
+  this->apply_velocity_constraints();
+
+ 
+  return true;
 }
 
 //! Assign velocity constraint
@@ -368,17 +410,51 @@ void mpm::NodeXMPM<Tdim, Tdof, Tnphases>::self_contact_discontinuity(double dt) 
     return;
   
   unsigned  phase = 0; 
+  const double tolerance = 1.0E-15;
 
-  double velocity_norm = velocity_.col(phase).dot(this->direction_discontinuity_.col(0));
-  this->velocity_.col(phase) = this->velocity_.col(phase) - velocity_norm*this->direction_discontinuity_.col(0);
+  auto mass_positive = mass_.col(phase) + mass_h_.col(phase);
+  auto mass_negative = mass_.col(phase) - mass_h_.col(phase);
 
-  double momentum_norm = momentum_.col(phase).dot(this->direction_discontinuity_.col(0));
+  if(mass_positive(phase) < tolerance || mass_negative(phase) < tolerance)
+    return;
 
-  this->momentum_.col(phase) = this->momentum_.col(phase) - momentum_norm*this->direction_discontinuity_.col(0);
+  auto velocity_positive = (momentum_.col(phase) + momentum_h_.col(phase)) / mass_positive(phase);
+  auto velocity_negative = (momentum_.col(phase) - momentum_h_.col(phase)) / mass_negative(phase);
 
-  double momentum_norm_h = momentum_h_.col(phase).dot(this->direction_discontinuity_.col(0));
+  if((velocity_positive - velocity_negative).col(phase).dot(direction_discontinuity_.col(phase)) >= 0)
+    return;
 
-  this->momentum_h_.col(phase) = this->momentum_h_.col(phase) - momentum_norm_h*this->direction_discontinuity_.col(0);
+  auto momentum_contact = (mass_h_(phase)*momentum_.col(phase) - mass_(phase)*momentum_h_.col(phase)) / mass_(phase);
+  auto force_contact = momentum_contact/dt;
+
+  //! frictional_coef < 0: move together without slide
+  if(frictional_coef < 0)
+  {
+    momentum_h_.col(phase) = momentum_h_.col(phase) + momentum_contact.col(phase);
+    internal_force_h_.col(phase) = internal_force_h_.col(phase) + force_contact.col(phase);
+  }
+  else
+  {
+    double momentum_contact_norm = momentum_contact.col(phase).dot(direction_discontinuity_.col(phase));
+    double force_contact_norm = momentum_contact_norm/dt;
+
+    double max_frictional_force = frictional_coef * abs(force_contact_norm);
+
+    auto momentum_tangential = momentum_contact.col(phase) - momentum_contact_norm*direction_discontinuity_.col(phase);
+    auto force_tangential = momentum_tangential/dt;
+
+    double force_tangential_value = force_tangential.norm();
+
+    double frictional_force = force_tangential_value < max_frictional_force? force_tangential_value : max_frictional_force;
+
+    //!adjust the momentum and force
+    momentum_h_.col(phase) = momentum_h_.col(phase) + momentum_contact_norm*direction_discontinuity_.col(phase);
+    internal_force_h_.col(phase) = internal_force_h_.col(phase) + force_contact_norm*direction_discontinuity_.col(phase);
+
+    momentum_h_.col(phase) = momentum_h_.col(phase) + frictional_force*force_tangential.col(phase).normalized()*dt;
+    internal_force_h_.col(phase) = internal_force_h_.col(phase) + frictional_force*force_tangential.col(phase).normalized();
+
+  }
 }
 
 //! Assign friction constraint

@@ -79,6 +79,8 @@ bool mpm::XMPMExplicit<Tdim>::initialise_discontinuities() {
       std::string discontinuity_file =
           io_->file_name(discontinuity_props["file"].template get<std::string>());
 
+      auto discontinuity_frictional_coef = discontinuity_props["frictional_coefficient"].template get<double>();
+
           // Create a mesh reader
       auto discontunity_io = Factory<mpm::IOMesh<Tdim>>::instance()->create(io_type);
       
@@ -89,6 +91,8 @@ bool mpm::XMPMExplicit<Tdim>::initialise_discontinuities() {
 
       bool status = 
         discontinuity->initialize(discontunity_io->read_mesh_nodes(discontinuity_file),discontunity_io->read_mesh_cells(discontinuity_file));
+
+      discontinuity->set_frictional_coef(discontinuity_frictional_coef);
        // Create points from file
   
       // Add discontinuity to list
@@ -315,18 +319,11 @@ bool mpm::XMPMExplicit<Tdim>::solve() {
     }
 #endif
 
-    // Check if damping has been specified and accordingly Iterate over
-    // active nodes to compute acceleratation and velocity
-    if (damping_type_ == mpm::Damping::Cundall)
-      mesh_->iterate_over_nodes_predicate(
-          std::bind(&mpm::NodeBase<Tdim>::compute_acceleration_velocity_cundall,
-                    std::placeholders::_1, phase, this->dt_, damping_factor_),
-          std::bind(&mpm::NodeBase<Tdim>::status, std::placeholders::_1));
-    else
-      mesh_->iterate_over_nodes_predicate(
-          std::bind(&mpm::NodeBase<Tdim>::compute_acceleration_velocity,
-                    std::placeholders::_1, phase, this->dt_),
-          std::bind(&mpm::NodeBase<Tdim>::status, std::placeholders::_1));
+    //intergrate momentum Iterate over
+    mesh_->iterate_over_nodes_predicate(
+        std::bind(&mpm::NodeBase<Tdim>::intergrate_momentum,
+                  std::placeholders::_1, phase, this->dt_),
+        std::bind(&mpm::NodeBase<Tdim>::status, std::placeholders::_1));
 
     // Iterate over each particle to compute updated position
     mesh_->iterate_over_particles(

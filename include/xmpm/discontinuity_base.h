@@ -72,6 +72,12 @@ class DiscontinuityBase {
   //! \param[in] the vector of the coordinates
   virtual void compute_phi(const std::vector<VectorDim>& coordinates, std::vector<double>& phi_list)  = 0;
 
+  bool self_contact(){return self_contact_;};
+
+  void set_frictional_coef(double coef) {frictional_coef_ = coef;};
+
+  double frictional_coef(){return frictional_coef_;};
+
 
   protected:
 
@@ -82,6 +88,11 @@ class DiscontinuityBase {
 
   //! Logger
   std::unique_ptr<spdlog::logger> console_;
+
+  //self-contact
+  bool self_contact_{true}; 
+
+  double frictional_coef_;
 
 };  // DiscontinuityBase class
 
@@ -138,6 +149,8 @@ template <unsigned Tdim>
 mpm::DiscontinuityBase<Tdim>::DiscontinuityBase()
 {
   numpoint_ = 0;
+
+  frictional_coef_ = -1;
   
   std::string logger =
       "discontinuitybase";
