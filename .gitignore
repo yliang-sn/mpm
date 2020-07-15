@@ -63,3 +63,4 @@ simulation/
 .vscode/
 results/
 KaHIP/
+build/*
